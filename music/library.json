@@ -1,0 +1,119 @@
+[
+  {
+    "id": "happy_sunrise",
+    "title": "晨光舞步",
+    "target": "happy",
+    "file": "music/happy_sunrise.mp3",
+    "bpm": 126,
+    "scale": "major",
+    "root": 60
+  },
+  {
+    "id": "happy_party",
+    "title": "彩色派对",
+    "target": "happy",
+    "file": "music/happy_party.mp3",
+    "bpm": 140,
+    "scale": "major",
+    "root": 62
+  },
+  {
+    "id": "sad_rain",
+    "title": "雨落窗前",
+    "target": "sad",
+    "file": "music/sad_rain.mp3",
+    "bpm": 64,
+    "scale": "minor",
+    "root": 57
+  },
+  {
+    "id": "sad_letter",
+    "title": "旧信笺",
+    "target": "sad",
+    "file": "music/sad_letter.mp3",
+    "bpm": 58,
+    "scale": "minor",
+    "root": 62
+  },
+  {
+    "id": "angry_storm",
+    "title": "风暴引擎",
+    "target": "angry",
+    "file": "music/angry_storm.mp3",
+    "bpm": 168,
+    "scale": "phrygian",
+    "root": 52
+  },
+  {
+    "id": "angry_engine",
+    "title": "熔炉",
+    "target": "angry",
+    "file": "music/angry_engine.mp3",
+    "bpm": 176,
+    "scale": "minor",
+    "root": 55
+  },
+  {
+    "id": "calm_lake",
+    "title": "湖面无风",
+    "target": "calm",
+    "file": "music/calm_lake.mp3",
+    "bpm": 68,
+    "scale": "major",
+    "root": 53
+  },
+  {
+    "id": "calm_cloud",
+    "title": "云上漫步",
+    "target": "calm",
+    "file": "music/calm_cloud.mp3",
+    "bpm": 72,
+    "scale": "lydian",
+    "root": 60
+  },
+  {
+    "id": "surprised_spark",
+    "title": "闪光瞬间",
+    "target": "surprised",
+    "file": "music/surprised_spark.mp3",
+    "bpm": 152,
+    "scale": "major",
+    "root": 64
+  },
+  {
+    "id": "fearful_whisper",
+    "title": "暗夜低语",
+    "target": "fearful",
+    "file": "music/fearful_whisper.mp3",
+    "bpm": 96,
+    "scale": "minor",
+    "root": 59
+  },
+  {
+    "id": "fearful_shadow",
+    "title": "悬空",
+    "target": "fearful",
+    "file": "music/fearful_shadow.mp3",
+    "bpm": 104,
+    "scale": "phrygian",
+    "root": 61
+  },
+  {
+    "id": "disgusted_rust",
+    "title": "锈迹",
+    "target": "disgusted",
+    "file": "music/disgusted_rust.mp3",
+    "bpm": 88,
+    "scale": "phrygian",
+    "root": 49
+  },
+  {
+    "id": "neutral_walk",
+    "title": "平铺直叙",
+    "target": "neutral",
+    "file": "music/neutral_walk.mp3",
+    "bpm": 92,
+    "scale": "major",
+    "root": 60
+  }
+]

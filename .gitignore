@@ -1,0 +1,6 @@
+# 工作区数据(非项目文件)
+.workbuddy/
+
+# 系统文件
+Thumbs.db
+.DS_Store

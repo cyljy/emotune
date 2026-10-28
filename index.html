@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EmoTune · 基于人脸情绪识别的歌曲推荐系统</title>
+<link rel="stylesheet" href="css/style.css?v=12">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
+</head>
+<body>
+<div id="app" v-cloak>
+
+  <!-- ================= 顶部导航 ================= -->
+  <header class="topbar">
+    <div class="brand"><span class="logo">🎵</span><div><h1>EmoTune</h1><small>基于人脸情绪识别的歌曲推荐系统</small></div></div>
+    <nav>
+      <button :class="{on: tab==='work'}" @click="tab='work'">工作台</button>
+      <button :class="{on: tab==='help'}" @click="tab='help'">使用说明</button>
+      <button :class="{on: tab==='algo'}" @click="tab='algo'">算法说明</button>
+    </nav>
+    <div class="model-badge" :class="modelsReady?'ok':'loading'">
+      {{ modelsReady ? '● 模型就绪 (本地)' : '◌ 加载模型: ' + loadStep }}
+    </div>
+  </header>
+
+  <!-- ================= 工作台 ================= -->
+  <main v-show="tab==='work'">
+    <!-- 输入源工具栏 -->
+    <section class="input-bar card">
+      <div class="src-btns">
+        <button class="src" :class="{on:mode==='image'}" @click="$refs.imgFile.click()" :disabled="!modelsReady">🖼️ 图片识别</button>
+        <button class="src" :class="{on:mode==='video'}" @click="$refs.vidFile.click()" :disabled="!modelsReady">🎬 视频文件</button>
+        <button class="src" :class="{on:mode==='camera'}" @click="startCamera" :disabled="!modelsReady">📷 实时摄像头</button>
+        <button class="src" :class="{on:mode==='screen'}" @click="startScreen" :disabled="!modelsReady">🖥️ 屏幕画面</button>
+        <input ref="imgFile" type="file" accept="image/*" hidden @change="pickImage">
+        <input ref="vidFile" type="file" accept="video/*" hidden @change="pickVideo">
+      </div>
+      <div class="run-ctrl" v-if="mode">
+        <button class="btn primary" @click="toggleRun">{{ running ? '⏸ 暂停识别' : '▶ 开始识别' }}</button>
+        <button class="btn ghost" @click="stopAll">⏹ 关闭</button>
+        <span class="stat" v-if="latency">检测耗时 <b>{{latency}}ms</b> · 检出人脸 <b>{{faces.length}}</b></span>
+      </div>
+    </section>
+
+    <div class="grid-2">
+      <!-- 左:媒体舞台 -->
+      <section class="card stage-card">
+        <div class="stage" ref="stage">
+          <video ref="video" v-show="mode==='video'||mode==='camera'||mode==='screen'" playsinline muted loop></video>
+          <img ref="img" v-show="mode==='image'" alt="待识别图片">
+          <canvas ref="overlay"></canvas>
+          <div class="stage-empty" v-if="!mode">
+            <p>👈 请选择一种输入方式开始</p>
+            <p class="tip">图片 / 视频文件 / 实时摄像头 / 屏幕画面 均可</p>
+          </div>
+          <div class="mode-tag" v-if="mode">{{ modeName }} <span v-if="running" class="pulse">识别中</span></div>
+        </div>
+        <!-- 演示人脸选择 -->
+        <div class="demo-faces">
+          <div class="df-title">演示人脸（点击即测 · 每种情绪 3 张 AI 生成逼真人像）</div>
+          <div class="df-row" v-for="g in demoFaces" :key="g.emo">
+            <span class="df-label" :style="{color:g.color}">{{ g.name }}</span>
+            <img v-for="n in 3" :key="n" :src="'faces/'+g.emo+'-'+n+'.jpg'" @click="useDemoFace(g.emo+'-'+n+'.jpg')" :title="g.name">
+          </div>
+        </div>
+      </section>
+
+      <!-- 右:情绪识别结果 -->
+      <section class="card">
+        <h2>🙂 情绪识别结果</h2>
+        <div class="emo-hero" v-if="topEmotion">
+          <span class="emo-emoji">{{ emoMeta[topEmotion].emoji }}</span>
+          <div>
+            <div class="emo-name" :style="{color:emoMeta[topEmotion].color}">{{ emoMeta[topEmotion].name }}</div>
+            <div class="emo-sub">置信度 {{ Math.round(confidence*100) }}% · EMA平滑 α=0.55 · 滑窗投票 {{Math.round(voteAgree*100)}}%</div>
+          </div>
+        </div>
+        <div class="emo-hero empty" v-else><span class="emo-emoji">🫥</span><div><div class="emo-name">等待人脸…</div><div class="emo-sub">选择输入源并开始识别</div></div></div>
+
+        <!-- 情绪联动自动播放 -->
+        <div class="auto-bar">
+          <button class="switch" :class="{on:autoPlay}" @click="toggleAuto" :title="autoPlay?'点击关闭自动切歌':'点击开启自动切歌'">
+            <i></i><span>{{ autoPlay ? '跟随情绪自动切歌 已开启' : '跟随情绪自动切歌 已关闭' }}</span>
+          </button>
+          <div class="auto-status" v-if="autoStatus">🎵 {{ autoStatus }}</div>
+          <div class="auto-status muted" v-else>识别到稳定情绪后自动播放对应歌曲；情绪变化时平滑淡入淡出换歌</div>
+        </div>
+
+        <div class="bars" v-if="faces.length">
+          <div class="bar-row" v-for="e in expOrder" :key="e">
+            <span class="bar-label">{{ emoMeta[e].name }}</span>
+            <div class="bar-track"><div class="bar-fill" :style="{width:(smProbs[e]*100)+'%', background:emoMeta[e].color}"></div></div>
+            <span class="bar-val">{{ Math.round(smProbs[e]*100) }}%</span>
+          </div>
+        </div>
+
+        <div class="geo" v-if="geo">
+          <h3>68点几何特征（AU近似 · 辅助证据）</h3>
+          <div class="geo-grid">
+            <div>😊 微笑曲率 <b>{{geo.smile}}</b></div>
+            <div>👁 眼睛开度 <b>{{geo.eyeOpen}}</b></div>
+            <div>🤨 挑眉幅度 <b>{{geo.browRaise}}</b></div>
+            <div>😖 眉间距离 <b>{{geo.browFurrow}}</b></div>
+            <div>😮 张嘴程度 <b>{{geo.mouthOpen}}</b></div>
+            <div>🤢 鼻翼间距 <b>{{geo.noseWrinkle}}</b></div>
+          </div>
+        </div>
+
+        <div class="va" v-if="topEmotion">
+          <h3>情绪二维坐标（Russell 环状模型）</h3>
+          <div class="va-row">效价 V (不愉快→愉快)<div class="va-track"><div class="va-dot" :style="{left:((va.v+1)/2*100)+'%', background:emoMeta[topEmotion].color}"></div></div><b>{{va.v.toFixed(2)}}</b></div>
+          <div class="va-row">唤醒 A (平静→激动)<div class="va-track"><div class="va-dot" :style="{left:(va.a*100)+'%', background:emoMeta[topEmotion].color}"></div></div><b>{{va.a.toFixed(2)}}</b></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 推荐区 -->
+    <section class="card reco">
+      <div class="reco-head">
+        <h2>🎧 推荐歌曲 <small v-if="topEmotion">— 面向「{{emoMeta[topEmotion].name}}」</small></h2>
+        <div class="reco-tabs">
+          <button :class="{on:recoTab==='local'}" @click="recoTab='local'">本地曲库 ({{tracks.length}})</button>
+          <button :class="{on:recoTab==='online'}" @click="switchOnline">在线歌曲 API</button>
+        </div>
+      </div>
+
+      <!-- 本地 -->
+      <div v-show="recoTab==='local'">
+        <div class="reco-tip" v-if="!topEmotion">请先完成人脸情绪识别，推荐引擎将按 <b>VA匹配 0.40 + 标签匹配 0.35 + 律动匹配 0.15 + 个性化反馈 0.10</b> 打分。</div>
+        <div class="track-list">
+          <div class="track" v-for="(t, i) in reco" :key="t.id" :class="{playing:player.track&&player.track.id===t.id}">
+            <div class="t-rank">{{ i+1 }}</div>
+            <button class="t-play" @click="playTrack(t)">{{ player.track&&player.track.id===t.id&&player.playing ? '⏸' : '▶' }}</button>
+            <div class="t-info">
+              <div class="t-title">{{ t.title }} <span class="chip">{{ emoMeta[t.cls] ? emoMeta[t.cls].name : t.target }}</span></div>
+              <div class="t-meta">
+                ♩ {{t.bpm}} BPM · {{t.mode==='major'?'大调':'小调'}} · 亮度 {{t.brightness}} · 声音密度 {{t.density}}/s
+                <template v-if="t.match"> · 匹配分 <b>{{(t.match.score*100).toFixed(1)}}</b> (VA {{t.match.fVA}} / 标签 {{t.match.fLabel}} / 律动 {{t.match.fRhythm}})</template>
+                <template v-else><i>{{ (t.bpm && t.mode) ? '等待情绪识别后计算匹配分' : '待音频分析' }}</i></template>
+              </div>
+              <div class="t-score"><div :style="{width:(t.match?t.match.score*100:0)+'%'}"></div></div>
+            </div>
+            <div class="t-actions">
+              <button title="喜欢（个性化反馈+1）" @click="feedbackOn(t,1)">👍</button>
+              <button title="跳过（个性化反馈-1）" @click="feedbackOn(t,-1)">👎</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 在线 -->
+      <div v-show="recoTab==='online'">
+        <div class="reco-tip">在线接口：<b>iTunes Search API</b>（JSONP 免密钥）。基于当前情绪自动选择检索词，返回 30 秒试听片段。需要联网。</div>
+        <div class="reco-tip" v-if="online.loading">🔍 正在检索…</div>
+        <div class="reco-tip err" v-if="online.error">⚠ {{online.error}}</div>
+        <div class="track-list" v-if="online.songs.length">
+          <div class="track" v-for="t in online.songs" :key="t.id" :class="{playing:player.track&&player.track.id===t.id}">
+            <img class="t-art" :src="t.artwork" alt="">
+            <button class="t-play" @click="playTrack(t)">{{ player.track&&player.track.id===t.id&&player.playing ? '⏸' : '▶' }}</button>
+            <div class="t-info">
+              <div class="t-title">{{ t.title }} <span class="chip online">在线</span></div>
+              <div class="t-meta">{{ t.artist }} · 检索词「{{ online.term }}」</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 播放器 -->
+    <footer class="player card" v-if="player.track">
+      <button class="t-play big" @click="togglePlay">{{ player.playing ? '⏸' : '▶' }}</button>
+      <div class="p-info">
+        <div class="t-title">{{ player.track.title }} <span class="chip" :class="{online:player.track.online}">{{ player.track.online?'在线试听 30s':'本地' }}</span></div>
+        <div class="p-progress" @click="seek($event)"><div :style="{width:progress+'%'}"></div></div>
+      </div>
+      <span class="p-time">{{ fmt(player.cur) }} / {{ fmt(player.dur) }}</span>
+    </footer>
+    <!-- 音频元素常驻(不受播放器显隐影响), 供自动切歌在首次识别时直接使用 -->
+    <audio ref="audio" @timeupdate="onTime" @ended="onEnded" preload="auto"></audio>
+  </main>
+
+  <!-- ================= 使用说明 ================= -->
+  <main v-show="tab==='help'" class="doc card">
+    <h1>📖 使用说明</h1>
+    <h2>1. 快速开始</h2>
+    <ol>
+      <li>等待右上角显示 <b>「● 模型就绪 (本地)」</b>（首次约 1~2 秒，模型权重约 890KB，全部加载到浏览器本地内存，不依赖任何云端推理）。</li>
+      <li>在<b>工作台</b>选择四种输入方式之一：
+        <ul>
+          <li><b>图片识别</b>：点击按钮上传本地人脸照片（也可直接点击下方「演示人脸」图）；</li>
+          <li><b>视频文件</b>：选择一段含人脸的本地视频（自动循环播放并逐帧检测）；</li>
+          <li><b>实时摄像头</b>：浏览器会请求摄像头权限（仅本地使用，画面不上传）；</li>
+          <li><b>屏幕画面</b>：选择浏览器窗口/整个屏幕/应用窗口，可演示含人脸的屏幕内容。</li>
+        </ul>
+      </li>
+      <li>点击 <b>▶ 开始识别</b>。右侧将实时显示 7 类情绪概率、置信度与几何特征。</li>
+      <li>情绪稳定后，下方<b>推荐歌曲</b>自动更新；点击 ▶ 播放，👍/👎 会参与个性化推荐。</li>
+    </ol>
+    <h2>2. 演示人脸</h2>
+    <p>页面内置 <b>7 种情绪 × 3 张 = 21 张</b> AI 生成的高真实感人像（中性、开心、悲伤、愤怒、恐惧、厌恶、惊讶），点击任意一张即自动切换到图片模式并识别，方便课堂/答辩演示。</p>
+    <h2>3. 本地曲库与在线歌曲</h2>
+    <ul>
+      <li><b>本地曲库</b>：内置 13 首程序合成的器乐片段（mp3），首次推荐时会在浏览器本地完成音频特征分析（BPM、调式、亮度等），结果缓存在 localStorage，二次访问无需重复分析。</li>
+      <li><b>在线歌曲</b>：通过 iTunes Search API（JSONP）按情绪关键词检索，返回正版 30 秒试听。需联网；离线时本地曲库完全可用。</li>
+    </ul>
+    <h2>4. 环境要求与隐私</h2>
+    <ul>
+      <li>推荐 Chrome / Edge 90+；摄像头与屏幕采集需通过 <b>localhost 或 HTTPS</b> 访问。</li>
+      <li><b>隐私安全</b>：人脸图像与视频全程只在浏览器内计算，不采集、不上传、不存储；唯一涉及网络的请求是「在线歌曲检索」。</li>
+    </ul>
+    <h2>5. 常见问题</h2>
+    <ul>
+      <li><b>检测不到人脸？</b>保证人脸占画面 15% 以上、正脸、光线充足；侧脸/遮挡会降低置信度。</li>
+      <li><b>摄像头黑屏？</b>检查浏览器权限设置；被其他程序占用时先释放。</li>
+      <li><b>情绪跳变？</b>系统内置 EMA 平滑 + 滑窗投票，正常情况下会收敛到稳定结果。</li>
+    </ul>
+  </main>
+
+  <!-- ================= 算法说明 ================= -->
+  <main v-show="tab==='algo'" class="doc card">
+    <h1>🧠 算法说明（全部经典、高效、可解释）</h1>
+
+    <h2>一、人脸检测：Tiny Face Detector（Tiny-YOLOv2 简化版）</h2>
+    <p>9 层全卷积网络，输入缩放至 <code>320×320</code>，在特征图上以 12 个 anchor box 直接回归人脸框位置与置信度，单次前向传播完成检测（复杂度 O(W·H)），权重仅 190KB，CPU 单帧 &lt;15ms。</p>
+
+    <h2>二、表情分类：Face Expression Net（8 层轻量 CNN）</h2>
+    <p>以对齐后的人脸区域为输入，经 3 组 Conv+ReLU+Pool 与 2 层 FC 输出 7 类概率：</p>
+    <p><code>softmax(W·h + b)，P ∈ {neutral, happy, sad, angry, fearful, disgusted, surprised}</code></p>
+    <p>权重 310KB，单帧 &lt;10ms。同时由 <b>FaceLandmark68Net</b> 回归 68 个关键点，用于计算几何辅助证据（FACS 面部动作单元近似）：</p>
+    <ul>
+      <li>微笑曲率 = 嘴角相对嘴中心的上抬量 / 嘴宽（AU12）</li>
+      <li>眼睛开度 EAR = 眼高和 / (2·眼宽·瞳距)（AU5/6）</li>
+      <li>挑眉幅度、眉间距离（AU1/4）、张嘴程度（AU26）、鼻翼间距（AU9）</li>
+    </ul>
+    <p>几何特征既用于结果可解释性展示，也可与 CNN 概率做交叉校验。</p>
+
+    <h2>三、时序平滑（稳定情绪输出）</h2>
+    <p>单帧表情概率存在抖动，采用两级平滑：</p>
+    <p>① 指数滑动平均：<code>S_t = α·x_t + (1−α)·S_{t−1}，α = 0.55</code>（兼顾响应速度与稳定性）</p>
+    <p>② 滑窗多数投票：最近 7 帧 argmax 情绪中出现次数最多者作为稳定情绪，配合票数一致率输出。</p>
+
+    <h2>四、歌曲旋律情绪识别（纯前端 DSP，全部本地计算）</h2>
+    <p>对音频做 <b>STFT</b>（4096 点汉明窗保证低频频率分辨率、65 抽头加窗 sinc 抗混叠 FIR 重采样至 ~11kHz）后逐帧提取：</p>
+    <ul>
+      <li><b>节奏 BGM</b>：低频段(&lt;260Hz, 鼓/贝斯节拍层)谱通量构成 onset 包络 → 自相关求节拍周期（带以 115BPM 为中心的节拍先验加权，抑制倍频歧义）→ BPM；峰值密度反映节奏密度。</li>
+      <li><b>调式</b>：将 55–2000Hz 能量折叠为 12 维色度向量（Chroma），与 <b>Krumhansl-Kessler</b> 大/小调感知模板在 12 个根音上做相关：<code>modeScore = ρ(chroma, KK_major) − ρ(chroma, KK_minor)</code>，大调→正效价，小调→负效价。</li>
+      <li><b>音色/音区</b>：谱质心（明亮度）、谱平坦度（噪声/粗糙感）、能量加权平均音高（音区高低）、RMS 动态范围。</li>
+    </ul>
+    <p>最终映射到 <b>Russell 效价-唤醒二维情绪空间</b>：</p>
+    <p><code>Arousal = 0.60·BPM_norm + 0.20·OnsetDensity + 0.20·Dynamics</code></p>
+    <p><code>Valence = 0.70·ModeScore + 0.15·Brightness + 0.15·Register + 0.10·Harmonicity</code></p>
+    <p>同时按「调式 × 节奏」规则表给出离散情绪类别（快+大调=欢乐、快+小调=愤怒/惊讶、中速+小调=恐惧/厌恶、慢+大调=平静、慢+小调=悲伤），与连续 VA 坐标共同参与推荐打分。</p>
+    <p>整体复杂度 <b>O(N·logM)</b>（N=采样点数，M=FFT 窗长），30 秒音频在浏览器中约 1~2 秒完成，结果缓存于 localStorage。</p>
+
+    <h2>五、推荐算法（四因子加权 + 个性化 Bandit）</h2>
+    <p>人脸情绪同样映射到 (V,A) 空间（如 happy=(0.75,0.72)、sad=(−0.72,−0.45)、angry=(−0.58,0.88)…），对每首候选曲计算：</p>
+    <p><code>Score = 0.40·exp(−1.8·d²_VA) + 0.35·Sim(标签) + 0.15·(1−|BPM_n − A|) + 0.10·Feedback + ε</code></p>
+    <ul>
+      <li><b>VA 匹配</b>：情绪坐标欧氏距离的高斯核，d_VA=‖曲VA − 人VA‖₂；</li>
+      <li><b>标签匹配</b>：Plutchik 情绪轮相邻度矩阵（同情绪=1，相邻≈0.5，对置≈0.3），允许"悲伤时也推荐舒缓曲"的软匹配；</li>
+      <li><b>律动匹配</b>：唤醒度高的人偏好快节奏，使 BPM 归一值贴近目标唤醒度；</li>
+      <li><b>个性化反馈</b>：用户 👍(+1)/👎(−1) 记录写入 localStorage，构成轻量 <b>Contextual Bandit</b>；<code>ε∈[−0.02,0.02]</code> 随机扰动保证探索，避免推荐列表固化。</li>
+    </ul>
+    <p>复杂度 O(K)（K=曲库规模），毫秒级完成排序。</p>
+
+    <h2>六、在线歌曲接口</h2>
+    <p><b>iTunes Search API</b>（JSONP 方式调用，免密钥、无 CORS 限制）：按当前情绪选择的检索词请求，返回正版 30s 试听链接，前端再按同一套评分逻辑排序展示。</p>
+  </main>
+
+</div>
+<script src="vendor/vue.global.prod.js"></script>
+<script src="vendor/face-api.min.js"></script>
+<script src="js/emotion.js?v=12"></script>
+<script src="js/audioFeatures.js?v=12"></script>
+<script src="js/recommender.js?v=12"></script>
+<script src="js/demoFacesData.js?v=12"></script>
+<script src="js/libraryData.js?v=12"></script>
+<script src="js/app.js?v=12"></script>
+</body>
+</html>
