@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EmoTune · 基于人脸情绪识别的歌曲推荐系统</title>
-<link rel="stylesheet" href="css/style.css?v=12">
+<link rel="stylesheet" href="css/style.css?v=13">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>">
 </head>
 <body>
@@ -195,7 +195,9 @@
       </li>
       <li>点击 <b>▶ 开始识别</b>。右侧将实时显示 7 类情绪概率、置信度与几何特征。</li>
       <li>情绪稳定后，下方<b>推荐歌曲</b>自动更新；点击 ▶ 播放，👍/👎 会参与个性化推荐。</li>
+      <li><b>情绪联动自动切歌</b>：默认开启。识别到稳定情绪（置信度 ≥45% 且连续 2 帧一致）后<b>自动播放</b>该情绪排名第一的歌曲；情绪发生变化时旧曲淡出、新曲淡入，实现<b>实时换歌</b>。可在「情绪识别结果」卡片中一键关闭。</li>
     </ol>
+    <p>🌐 在线地址：<b>https://cyljy.github.io/emotune/</b>（GitHub Pages，HTTPS 环境下摄像头与屏幕采集权限均可正常授予）</p>
     <h2>2. 演示人脸</h2>
     <p>页面内置 <b>7 种情绪 × 3 张 = 21 张</b> AI 生成的高真实感人像（中性、开心、悲伤、愤怒、恐惧、厌恶、惊讶），点击任意一张即自动切换到图片模式并识别，方便课堂/答辩演示。</p>
     <h2>3. 本地曲库与在线歌曲</h2>
@@ -265,16 +267,27 @@
 
     <h2>六、在线歌曲接口</h2>
     <p><b>iTunes Search API</b>（JSONP 方式调用，免密钥、无 CORS 限制）：按当前情绪选择的检索词请求，返回正版 30s 试听链接，前端再按同一套评分逻辑排序展示。</p>
+
+    <h2>七、情绪联动自动切歌策略（实时换歌）</h2>
+    <p>目标：表情变化 → 音乐实时跟随，同时避免"抖动换歌"破坏听感。采用<b>三道闸门 + 平滑过渡</b>：</p>
+    <ol>
+      <li><b>置信度闸门</b>：仅当 <code>confidence ≥ 0.45</code> 时进入判断，低置信度（侧脸、遮挡、运动模糊）不触发切歌。</li>
+      <li><b>时序一致性闸门</b>：<code>voteAgree ≥ 0.60</code>（7 帧滑窗投票比例）且<b>连续 2 帧</b>判定为同一情绪，才算"情绪已改变"——等价于中值滤波，抑制单帧误判。</li>
+      <li><b>最小换歌间隔闸门</b>：距上次切歌 <code>≥ 1.8s</code> 才允许再次切换，形成时间维度上的迟滞（hysteresis），杜绝连续切歌。</li>
+    </ol>
+    <p>通过闸门后，取该情绪下 <b>Score 排名第 1</b> 的曲目（第五节的四因子加权结果，含用户 👍/👎 反馈），执行<b>音量包络交叉淡化</b>：旧曲 <code>220ms</code> 线性淡出 → 切换音源 → 新曲 <code>550ms</code> 线性淡入（<code>requestAnimationFrame</code> 驱动，<code>volume</code> 归一化到 [0,1]），听感上无爆音、无硬切。</p>
+    <p>状态机：<code>idle →(稳定情绪) playing →(情绪变化且通过闸门) switching →(淡入完成) playing</code>；<code>playing</code> 状态下若推荐首位与当前播放曲目相同则不重复加载。</p>
+    <p>复杂度：每帧仅一次情绪比较 O(1)，切歌时 O(K) 重排（K=曲库规模），实时帧率不受影响。</p>
   </main>
 
 </div>
 <script src="vendor/vue.global.prod.js"></script>
 <script src="vendor/face-api.min.js"></script>
-<script src="js/emotion.js?v=12"></script>
-<script src="js/audioFeatures.js?v=12"></script>
-<script src="js/recommender.js?v=12"></script>
-<script src="js/demoFacesData.js?v=12"></script>
-<script src="js/libraryData.js?v=12"></script>
-<script src="js/app.js?v=12"></script>
+<script src="js/emotion.js?v=13"></script>
+<script src="js/audioFeatures.js?v=13"></script>
+<script src="js/recommender.js?v=13"></script>
+<script src="js/demoFacesData.js?v=13"></script>
+<script src="js/libraryData.js?v=13"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>

@@ -366,12 +366,16 @@ createApp({
       else { this._autoStreakEmo = emo; this._autoStreak = 1; }
       if (this._autoStreak < 2) return;
       if (emo === this.autoEmo && this.player.playing) return;
+      /* 最短换歌间隔 1.8s, 防止表情抖动导致连续切歌 */
+      const now = performance.now();
+      if (this._lastSwitchAt && now - this._lastSwitchAt < 1800) return;
 
       const t = this.reco[0];
       if (!t) return;
       if (this.player.track && this.player.track.id === t.id && this.player.playing) { this.autoEmo = emo; return; }
 
       this.autoEmo = emo;
+      this._lastSwitchAt = now;
       const meta = this.emoMeta[emo];
       this.autoStatus = (this.player.playing ? '情绪变化 → ' : '自动开播 → ')
         + (meta ? meta.name : emo) + '《' + t.title + '》';

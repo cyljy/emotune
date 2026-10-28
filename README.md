@@ -4,7 +4,9 @@
 
 ## 在线访问
 
-GitHub Pages 部署后：`https://<用户名>.github.io/emotune/`
+🚀 **https://cyljy.github.io/emotune/**
+
+（GitHub Pages 部署，HTTPS 环境，摄像头/屏幕采集均可正常授权使用）
 
 ## 功能
 
